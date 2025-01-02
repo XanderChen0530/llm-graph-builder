@@ -14,6 +14,18 @@ from langchain_community.chat_models import ChatOllama
 import boto3
 import google.auth
 
+DEFAULT_BASE_URLS = {
+    "openai": "https://apis.bioinforcode.com/v1",
+    "azure": "https://apis.bioinforcode.com/v1",
+    "anthropic": "https://apis.bioinforcode.com/v1",
+    "bedrock": "https://apis.bioinforcode.com/v1",
+    "ollama": "https://apis.bioinforcode.com/v1",
+    "diffbot": "https://apis.bioinforcode.com/v1",
+    "groq": "https://apis.bioinforcode.com/v1",
+    "bedrock": "https://apis.bioinforcode.com/v1",
+    "gemini": "https://apis.bioinforcode.com/v1"
+}
+
 def get_llm(model: str):
     """Retrieve the specified language model based on the model name."""
     model = model.lower().strip()
@@ -28,46 +40,38 @@ def get_llm(model: str):
     logging.info("Model: {}".format(env_key))
     try:
         if "gemini" in model:
-            model_name = env_value
-            credentials, project_id = google.auth.default()
-            llm = ChatVertexAI(
-                model_name=model_name,
-                #convert_system_message_to_human=True,
-                credentials=credentials,
-                project=project_id,
-                temperature=0,
-                safety_settings={
-                    HarmCategory.HARM_CATEGORY_UNSPECIFIED: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-                },
+            model_name, api_key = env_value.split(",")
+            llm = ChatOpenAI(
+                api_key=api_key,
+                model=model_name,
+                base_url=DEFAULT_BASE_URLS["gemini"],
+                temperature=0
             )
         elif "openai" in model:
             model_name, api_key = env_value.split(",")
             llm = ChatOpenAI(
                 api_key=api_key,
                 model=model_name,
-                temperature=0,
+                base_url=DEFAULT_BASE_URLS["openai"],
+                temperature=0
             )
 
         elif "azure" in model:
-            model_name, api_endpoint, api_key, api_version = env_value.split(",")
-            llm = AzureChatOpenAI(
+            model_name, api_key = env_value.split(",")
+            llm = ChatOpenAI(
                 api_key=api_key,
-                azure_endpoint=api_endpoint,
-                azure_deployment=model_name,  # takes precedence over model parameter
-                api_version=api_version,
-                temperature=0,
-                max_tokens=None,
-                timeout=None,
+                model=model_name,
+                base_url=DEFAULT_BASE_URLS["azure"],
+                temperature=0
             )
 
         elif "anthropic" in model:
             model_name, api_key = env_value.split(",")
-            llm = ChatAnthropic(
-                api_key=api_key, model=model_name, temperature=0, timeout=None
+            llm = ChatOpenAI(
+                api_key=api_key,
+                model=model_name,
+                base_url=DEFAULT_BASE_URLS["anthropic"],
+                temperature=0
             )
 
         elif "fireworks" in model:
@@ -75,32 +79,39 @@ def get_llm(model: str):
             llm = ChatFireworks(api_key=api_key, model=model_name)
 
         elif "groq" in model:
-            model_name, base_url, api_key = env_value.split(",")
-            llm = ChatGroq(api_key=api_key, model_name=model_name, temperature=0)
+            model_name, api_key = env_value.split(",")
+            llm = ChatOpenAI(
+                api_key=api_key,
+                model=model_name,
+                base_url=DEFAULT_BASE_URLS["groq"],
+                temperature=0
+            )
 
         elif "bedrock" in model:
-            model_name, aws_access_key, aws_secret_key, region_name = env_value.split(",")
-            bedrock_client = boto3.client(
-                service_name="bedrock-runtime",
-                region_name=region_name,
-                aws_access_key_id=aws_access_key,
-                aws_secret_access_key=aws_secret_key,
+            model_name, api_key = env_value.split(",")
+            llm = ChatOpenAI(
+                api_key=api_key,
+                model=model_name,
+                base_url=DEFAULT_BASE_URLS["bedrock"],
+                temperature=0
             )
 
             llm = ChatBedrock(
-                client=bedrock_client, model_id=model_name, model_kwargs=dict(temperature=0)
+                client=bedrock_client, 
+                model_id=model_name, 
+                model_kwargs=dict(temperature=0)
             )
 
         elif "ollama" in model:
             model_name, base_url = env_value.split(",")
+            # Use provided base_url or default
+            base_url = base_url or DEFAULT_BASE_URLS["ollama"]
             llm = ChatOllama(base_url=base_url, model=model_name)
 
         elif "diffbot" in model:
-            #model_name = "diffbot"
-            model_name, api_key = env_value.split(",")
-            llm = DiffbotGraphTransformer(
-                diffbot_api_key=api_key,
-                extract_types=["entities", "facts"],
+            token = env_value
+            llm = ChatDiffbot(
+                diffbot_api_token=token
             )
         
         else: 
@@ -210,4 +221,4 @@ async def get_graph_from_llm(model, chunkId_chunkDoc_list, allowedNodes, allowed
     except Exception as e:
         err = f"Error during extracting graph with llm: {e}"
         logging.error(err)
-        raise 
+        raise

@@ -121,13 +121,13 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+#.env
+#.venv
+#env/
+#venv/
+#ENV/
+#env.bak/
+#venv.bak/
 
 # Spyder project settings
 .spyderproject
@@ -173,3 +173,5 @@ google-cloud-cli-linux-x86_64.tar.gz
 newenv
 files
 
+# Neo4j folder
+neo4j_data/

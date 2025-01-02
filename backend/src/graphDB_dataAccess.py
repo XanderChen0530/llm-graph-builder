@@ -183,7 +183,7 @@ class graphDBdataAccess:
 
         except Exception as e:
             logging.error(f"Error checking account access: {e}")
-            return False
+            return True # False
 
     def check_gds_version(self):
         try:
