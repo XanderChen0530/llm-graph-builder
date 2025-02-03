@@ -3,8 +3,8 @@ import logging
 from src.document_sources.youtube import create_youtube_url
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_google_vertexai import VertexAIEmbeddings
-from langchain_openai import OpenAIEmbeddings
 from langchain_neo4j import Neo4jGraph
+from src.shared.custom_embeddings import CustomBGEEmbeddings
 from langchain_community.graphs.graph_document import GraphDocument
 from typing import List
 import re
@@ -66,20 +66,29 @@ def create_graph_database_connection(uri, userName, password, database):
 
 def load_embedding_model(embedding_model_name: str):
     if embedding_model_name == "openai":
-        embeddings = OpenAIEmbeddings(model=os.environ.get('MY_EMBEDDING_MODEL'), base_url=os.environ.get('MY_EMBEDDING_URL'),api_key=os.environ.get('MY_EMBEDDING_APIKEY'))
-        dimension = os.environ.get('MY_EMBEDDING_MODEL_DIMONTION')
-    elif embedding_model_name == "vertexai":        
+        model_name = os.environ.get('MY_EMBEDDING_MODEL')
+        if model_name == "bge-m3":
+            embeddings = CustomBGEEmbeddings(
+                api_key=os.environ.get('MY_EMBEDDING_APIKEY'),
+                base_url=os.environ.get('MY_EMBEDDING_URL'),
+                model=model_name
+            )
+            dimension = int(os.environ.get('MY_EMBEDDING_MODEL_DIMONTION', '1024'))
+            logging.info(f"Embedding: Using Custom BGE-M3 API, Dimension:{dimension}")
+        else:
+            raise ValueError(f"Unsupported OpenAI model: {model_name}")
+    elif embedding_model_name == "vertexai":
         embeddings = VertexAIEmbeddings(
             model="textembedding-gecko@003"
         )
         dimension = 768
-        logging.info(f"Embedding: Using Vertex AI Embeddings , Dimension:{dimension}")
+        logging.info(f"Embedding: Using Vertex AI Embeddings, Dimension:{dimension}")
     else:
         embeddings = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2"#, cache_folder="/embedding_model"
+            model_name="all-MiniLM-L6-v2"
         )
         dimension = 384
-        logging.info(f"Embedding: Using Langchain HuggingFaceEmbeddings , Dimension:{dimension}")
+        logging.info(f"Embedding: Using Langchain HuggingFaceEmbeddings, Dimension:{dimension}")
     return embeddings, dimension
 
 def save_graphDocuments_in_neo4j(graph:Neo4jGraph, graph_document_list:List[GraphDocument]):
