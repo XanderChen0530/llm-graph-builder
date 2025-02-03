@@ -39,89 +39,42 @@ def get_llm(model: str):
     
     logging.info("Model: {}".format(env_key))
     try:
-        if "gemini" in model:
-            model_name, api_key = env_value.split(",")
-            llm = ChatOpenAI(
-                api_key=api_key,
-                model=model_name,
-                base_url=DEFAULT_BASE_URLS["gemini"],
-                temperature=0
+        # Split configuration and handle both 2-part and 3-part formats
+        parts = [p.strip() for p in env_value.split(",")]
+        
+        if len(parts) == 2:
+            model_name, api_key = parts
+            api_endpoint = DEFAULT_BASE_URLS.get(
+                next((k for k in DEFAULT_BASE_URLS.keys() if k in model.lower()), "openai")
             )
-        elif "openai" in model:
-            model_name, api_key = env_value.split(",")
-            llm = ChatOpenAI(
-                api_key=api_key,
-                model=model_name,
-                base_url=DEFAULT_BASE_URLS["openai"],
-                temperature=0
-            )
-
-        elif "azure" in model:
-            model_name, api_key = env_value.split(",")
-            llm = ChatOpenAI(
-                api_key=api_key,
-                model=model_name,
-                base_url=DEFAULT_BASE_URLS["azure"],
-                temperature=0
-            )
-
-        elif "anthropic" in model:
-            model_name, api_key = env_value.split(",")
-            llm = ChatOpenAI(
-                api_key=api_key,
-                model=model_name,
-                base_url=DEFAULT_BASE_URLS["anthropic"],
-                temperature=0
-            )
-
-        elif "fireworks" in model:
-            model_name, api_key = env_value.split(",")
+        elif len(parts) == 3:
+            model_name, api_endpoint, api_key = parts
+        else:
+            err = f"Invalid configuration format for model '{model}'. Expected either 'model_name,api_key' or 'model_name,api_endpoint,api_key'"
+            logging.error(err)
+            raise ValueError(err)
+            
+        if "fireworks" in model:
             llm = ChatFireworks(api_key=api_key, model=model_name)
-
-        elif "groq" in model:
-            model_name, api_key = env_value.split(",")
-            llm = ChatOpenAI(
-                api_key=api_key,
-                model=model_name,
-                base_url=DEFAULT_BASE_URLS["groq"],
-                temperature=0
-            )
-
+        elif "ollama" in model:
+            llm = ChatOllama(base_url=api_endpoint or DEFAULT_BASE_URLS["ollama"], model=model_name)
+        elif "diffbot" in model:
+            llm = ChatDiffbot(diffbot_api_token=api_key)
         elif "bedrock" in model:
-            model_name, api_key = env_value.split(",")
-            llm = ChatOpenAI(
-                api_key=api_key,
-                model=model_name,
-                base_url=DEFAULT_BASE_URLS["bedrock"],
-                temperature=0
-            )
-
             llm = ChatBedrock(
-                client=bedrock_client, 
-                model_id=model_name, 
+                client=bedrock_client,
+                model_id=model_name,
                 model_kwargs=dict(temperature=0)
             )
-
-        elif "ollama" in model:
-            model_name, base_url = env_value.split(",")
-            # Use provided base_url or default
-            base_url = base_url or DEFAULT_BASE_URLS["ollama"]
-            llm = ChatOllama(base_url=base_url, model=model_name)
-
-        elif "diffbot" in model:
-            token = env_value
-            llm = ChatDiffbot(
-                diffbot_api_token=token
-            )
-        
-        else: 
-            model_name, api_endpoint, api_key = env_value.split(",")
+        else:
+            # Use ChatOpenAI for all other models (openai, gemini, anthropic, groq, etc.)
             llm = ChatOpenAI(
                 api_key=api_key,
                 base_url=api_endpoint,
                 model=model_name,
                 temperature=0,
             )
+            logging.info(f"Created ChatOpenAI with model={model_name}, base_url={api_endpoint}")
     except Exception as e:
         err = f"Error while creating LLM '{model}': {str(e)}"
         logging.error(err)

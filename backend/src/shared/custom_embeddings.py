@@ -45,23 +45,6 @@ class CustomBGEEmbeddings(Embeddings):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
-
-    def __init__(
-        self,
-        api_key: str,
-        base_url: str,
-        model: str = "bge-m3",
-        batch_size: int = 512,
-    ):
-        """Initialize the embeddings class."""
-        self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
-        self.model = model
-        self.batch_size = batch_size
-        self.headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
-        }
         # Create a session with our custom TLS adapter
         self.session = requests.Session()
         self.session.mount('https://', TLSAdapter())
@@ -70,23 +53,53 @@ class CustomBGEEmbeddings(Embeddings):
     def _call_api(self, texts: List[str]) -> List[List[float]]:
         """Call the embeddings API."""
         try:
+            # Format request body according to BGE-M3 API expectations
+            request_body = {
+                "model": self.model,
+                "input": texts,
+                "encoding_format": "float",
+                "normalize": True
+            }
+            logging.info(f"Making API request to {self.base_url}/embeddings")
+            logging.debug(f"Request body: {request_body}")
+            
             response = self.session.post(
                 f"{self.base_url}/embeddings",
                 headers=self.headers,
-                json={
-                    "input": texts,
-                    "model": self.model,
-                    "encoding_format": "float"
-                },
-                timeout=30  # Add timeout to prevent hanging
+                json=request_body,
+                timeout=30
             )
-            response.raise_for_status()
+            
+            # Log response details for debugging
+            if not response.ok:
+                error_msg = f"API Error Response (Status {response.status_code}): {response.text}"
+                logging.error(error_msg)
+                try:
+                    error_json = response.json()
+                    if 'error' in error_json:
+                        error_msg = f"API Error Details: {error_json['error']}"
+                        logging.error(error_msg)
+                except:
+                    pass
+                response.raise_for_status()
+                
             result = response.json()
             if "data" not in result:
-                raise ValueError(f"Unexpected API response format: {result}")
+                error_msg = f"Unexpected API response format: {result}"
+                logging.error(error_msg)
+                raise ValueError(error_msg)
+                
             return result["data"]
+            
         except requests.exceptions.RequestException as e:
-            logging.error(f"Error calling embeddings API: {str(e)}")
+            error_msg = f"Request error: {str(e)}"
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_details = e.response.json()
+                    error_msg += f"\nAPI Error Details: {error_details}"
+                except:
+                    error_msg += f"\nResponse Text: {e.response.text}"
+            logging.error(error_msg)
             raise
         except Exception as e:
             logging.error(f"Unexpected error: {str(e)}")
