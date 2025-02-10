@@ -7,6 +7,7 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./backend:/code
+    restart: unless-stopped
     environment:
       - NEO4J_DATABASE=${NEO4J_DATABASE} # 指定neo4j启动Database
       - NEO4J_URI=${NEO4J_URI-neo4j://host.docker.internal:7687}
@@ -33,7 +34,7 @@ services:
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:
-      - "8000:8000"
+      - "0.0.0.0:8000:8000"  # Accessible at http://<host-ip>:8000
     networks:
       - net
 
@@ -44,13 +45,15 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_BACKEND_API_URL=${VITE_BACKEND_API_URL-http://localhost:8000}
+        # Use host.docker.internal for container-to-container communication
+        # Other computers in the network should use the host machine's IP address
+        - VITE_BACKEND_API_URL=${VITE_BACKEND_API_URL-http://host.docker.internal:8000}
         - VITE_REACT_APP_SOURCES=${VITE_REACT_APP_SOURCES-local,wiki,s3}
         - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID-}
         - VITE_BLOOM_URL=${VITE_BLOOM_URL-https://workspace-preview.neo4j.io/workspace/explore?connectURL={CONNECT_URL}&search=Show+me+a+graph&featureGenAISuggestions=true&featureGenAISuggestionsInternal=true}
         - VITE_TIME_PER_PAGE=${VITE_TIME_PER_PAGE-50}
         - VITE_CHUNK_SIZE=${VITE_CHUNK_SIZE-5242880}
-        - VITE_LARGE_FILE_SIZE=${VITE_LARGE_FILE_SIZE-5242880}
+        - VITE_LARGE_FILE_SIZE=${VITE_LARGE_FILE_SIZE-242880}
         - VITE_ENV=${VITE_ENV-DEV}
         - VITE_CHAT_MODES=${VITE_CHAT_MODES-}
         - VITE_BATCH_SIZE=${VITE_BATCH_SIZE-2}
@@ -60,11 +63,12 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    restart: unless-stopped
     env_file:
       - ./frontend/.env
     container_name: frontend
     ports:
-      - "8080:8080"
+      - "0.0.0.0:8080:8080"  # Accessible at http://<host-ip>:8080
     networks:
       - net
   neo4j:
@@ -78,9 +82,9 @@ services:
       - NEO4J_AUTH=neo4j/dai81544021
       - NEO4J_dbms_default__database=${NEO4J_DATABASE}
       - NEO4J_PLUGINS=["apoc"]
-      - NEO4J_server_memory_heap_initial__size=1G
-      - NEO4J_server_memory_heap_max__size=4G
-      - NEO4J_server_memory_pagecache_size=1G
+      - NEO4J_server_memory_heap_initial__size=4G
+      - NEO4J_server_memory_heap_max__size=16G
+      - NEO4J_server_memory_pagecache_size=4G
       - NEO4J_apoc_export_file_enabled=true
       - NEO4J_apoc_import_file_enabled=true
       - NEO4J_dbms_security_procedures_unrestricted=*

@@ -15,16 +15,35 @@ import boto3
 import google.auth
 
 DEFAULT_BASE_URLS = {
+    # Standard models
     "openai": "https://apis.bioinforcode.com/v1",
     "azure": "https://apis.bioinforcode.com/v1",
     "anthropic": "https://apis.bioinforcode.com/v1",
-    "bedrock": "https://apis.bioinforcode.com/v1",
-    "ollama": "https://apis.bioinforcode.com/v1",
-    "diffbot": "https://apis.bioinforcode.com/v1",
+    "gemini": "https://apis.bioinforcode.com/v1",
     "groq": "https://apis.bioinforcode.com/v1",
+    
+    # Open source models
+    "ollama": "https://apis.bioinforcode.com/v1",
+    "llama2": "https://apis.bioinforcode.com/v1",
+    "mistral": "https://apis.bioinforcode.com/v1",
+    "mixtral": "https://apis.bioinforcode.com/v1",
+    "phi": "https://apis.bioinforcode.com/v1",
+    
+    # Cloud provider models
     "bedrock": "https://apis.bioinforcode.com/v1",
-    "gemini": "https://apis.bioinforcode.com/v1"
+    "vertex": "https://apis.bioinforcode.com/v1",
+    
+    # Other services
+    "diffbot": "https://apis.bioinforcode.com/v1",
+    "cohere": "https://apis.bioinforcode.com/v1",
+    "ai21": "https://apis.bioinforcode.com/v1"
 }
+
+# Model families that use ChatOpenAI handler
+OPENAI_COMPATIBLE_MODELS = [
+    "openai", "azure", "anthropic", "gemini", "groq",
+    "llama2", "mistral", "mixtral", "phi", "cohere", "ai21"
+]
 
 def get_llm(model: str):
     """Retrieve the specified language model based on the model name."""
@@ -39,42 +58,70 @@ def get_llm(model: str):
     
     logging.info("Model: {}".format(env_key))
     try:
-        # Split configuration and handle both 2-part and 3-part formats
+        # Parse configuration
         parts = [p.strip() for p in env_value.split(",")]
         
         if len(parts) == 2:
             model_name, api_key = parts
-            api_endpoint = DEFAULT_BASE_URLS.get(
-                next((k for k in DEFAULT_BASE_URLS.keys() if k in model.lower()), "openai")
-            )
+            # Find the appropriate base URL by checking model name against known providers
+            model_provider = next((k for k in DEFAULT_BASE_URLS.keys() if k in model.lower()), "openai")
+            api_endpoint = DEFAULT_BASE_URLS[model_provider]
+            logging.info(f"Using default base URL for {model_provider}: {api_endpoint}")
         elif len(parts) == 3:
             model_name, api_endpoint, api_key = parts
+            logging.info(f"Using custom base URL: {api_endpoint}")
         else:
             err = f"Invalid configuration format for model '{model}'. Expected either 'model_name,api_key' or 'model_name,api_endpoint,api_key'"
             logging.error(err)
             raise ValueError(err)
+
+        # Determine model type and create appropriate instance
+        model_type = next((k for k in DEFAULT_BASE_URLS.keys() if k in model.lower()), None)
+        
+        if not model_type:
+            err = f"Unknown model type for '{model}'. Please add it to DEFAULT_BASE_URLS first."
+            logging.error(err)
+            raise ValueError(err)
             
-        if "fireworks" in model:
-            llm = ChatFireworks(api_key=api_key, model=model_name)
-        elif "ollama" in model:
-            llm = ChatOllama(base_url=api_endpoint or DEFAULT_BASE_URLS["ollama"], model=model_name)
-        elif "diffbot" in model:
-            llm = ChatDiffbot(diffbot_api_token=api_key)
-        elif "bedrock" in model:
-            llm = ChatBedrock(
-                client=bedrock_client,
-                model_id=model_name,
-                model_kwargs=dict(temperature=0)
-            )
-        else:
-            # Use ChatOpenAI for all other models (openai, gemini, anthropic, groq, etc.)
+        logging.info(f"Creating LLM for model type: {model_type}")
+        
+        if model_type in OPENAI_COMPATIBLE_MODELS:
             llm = ChatOpenAI(
                 api_key=api_key,
                 base_url=api_endpoint,
                 model=model_name,
                 temperature=0,
             )
-            logging.info(f"Created ChatOpenAI with model={model_name}, base_url={api_endpoint}")
+            logging.info(f"Created ChatOpenAI compatible model: {model_name}")
+            
+        elif model_type == "fireworks":
+            llm = ChatFireworks(api_key=api_key, model=model_name)
+            logging.info(f"Created Fireworks model: {model_name}")
+            
+        elif model_type == "ollama":
+            llm = ChatOllama(base_url=api_endpoint, model=model_name)
+            logging.info(f"Created Ollama model: {model_name}")
+            
+        elif model_type == "diffbot":
+            llm = ChatDiffbot(diffbot_api_token=api_key)
+            logging.info(f"Created Diffbot model")
+            
+        elif model_type == "bedrock":
+            llm = ChatBedrock(
+                client=bedrock_client,
+                model_id=model_name,
+                model_kwargs=dict(temperature=0)
+            )
+            logging.info(f"Created Bedrock model: {model_name}")
+            
+        elif model_type == "vertex":
+            llm = ChatVertexAI(model=model_name)
+            logging.info(f"Created Vertex AI model: {model_name}")
+            
+        else:
+            err = f"Model type '{model_type}' is defined but not implemented. Please add implementation to get_llm function."
+            logging.error(err)
+            raise NotImplementedError(err)
     except Exception as e:
         err = f"Error while creating LLM '{model}': {str(e)}"
         logging.error(err)
@@ -85,31 +132,42 @@ def get_llm(model: str):
 
 
 def get_combined_chunks(chunkId_chunkDoc_list):
-    chunks_to_combine = int(os.environ.get("NUMBER_OF_CHUNKS_TO_COMBINE"))
-    logging.info(f"Combining {chunks_to_combine} chunks before sending request to LLM")
+    # Maximum number of chunks that can be processed in one batch (API limit)
+    MAX_BATCH_SIZE = 25
+    # Get configured chunk combination size from env, but ensure it doesn't exceed MAX_BATCH_SIZE
+    chunks_to_combine = min(int(os.environ.get("NUMBER_OF_CHUNKS_TO_COMBINE", "6")), MAX_BATCH_SIZE)
+    logging.info(f"Combining {chunks_to_combine} chunks before sending request to LLM (max batch size: {MAX_BATCH_SIZE})")
+    
     combined_chunk_document_list = []
-    combined_chunks_page_content = [
-        "".join(
+    
+    # Process chunks in batches that respect the MAX_BATCH_SIZE limit
+    for i in range(0, len(chunkId_chunkDoc_list), chunks_to_combine):
+        batch = chunkId_chunkDoc_list[i:i + chunks_to_combine]
+        
+        # Combine the page content for this batch
+        combined_content = "".join(
             document["chunk_doc"].page_content
-            for document in chunkId_chunkDoc_list[i : i + chunks_to_combine]
+            for document in batch
         )
-        for i in range(0, len(chunkId_chunkDoc_list), chunks_to_combine)
-    ]
-    combined_chunks_ids = [
-        [
+        
+        # Collect chunk IDs for this batch
+        combined_ids = [
             document["chunk_id"]
-            for document in chunkId_chunkDoc_list[i : i + chunks_to_combine]
+            for document in batch
         ]
-        for i in range(0, len(chunkId_chunkDoc_list), chunks_to_combine)
-    ]
-
-    for i in range(len(combined_chunks_page_content)):
+        
+        # Create a Document object for the combined batch
         combined_chunk_document_list.append(
             Document(
-                page_content=combined_chunks_page_content[i],
-                metadata={"combined_chunk_ids": combined_chunks_ids[i]},
+                page_content=combined_content,
+                metadata={"combined_chunk_ids": combined_ids},
             )
         )
+        
+        # Log batch processing
+        logging.debug(f"Processed batch of {len(batch)} chunks")
+    
+    logging.info(f"Created {len(combined_chunk_document_list)} combined documents")
     return combined_chunk_document_list
 
 def get_chunk_id_as_doc_metadata(chunkId_chunkDoc_list):

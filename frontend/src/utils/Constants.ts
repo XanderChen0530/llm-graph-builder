@@ -9,37 +9,32 @@ export const APP_SOURCES =
     ? (process.env.VITE_REACT_APP_SOURCES?.split(',') as string[])
     : ['gcs', 's3', 'local', 'wiki', 'youtube', 'web'];
 
+// Default LLM models if not specified in environment
+const DEFAULT_LLMS = [
+  'groq_deepseek',
+  'gemini_1.5_pro',
+  'gemini_2.0_flash',
+  // 'openai_gpt_4o',
+  'openai_gpt_4o_mini',
+  'openai_o1_mini',
+  // 'anthropic_claude_3_5_sonnet',
+  // Add new models here
+  'groq_yi_lightning',  // Use underscore to match backend configuration
+  // 'llama2_70b',
+  // 'mixtral_8x7b'
+];
+
+// Get models from environment or use defaults
 export const llms =
   process.env?.VITE_LLM_MODELS?.trim() != ''
     ? (process.env.VITE_LLM_MODELS?.split(',') as string[])
-    : [
-        'groq_deepseek',
-        'gemini_1.5_pro',
-        'gemini_2.0_flash',
-        'openai_gpt_4o',
-        'openai_gpt_4o_mini',
-        'openai_o1_mini',
-        'anthropic_claude_3_5_sonnet'
-      ];
+    : DEFAULT_LLMS;
 
-export const supportedLLmsForRagas = [
-  'groq_deepseek',
-  'gemini_1.5_pro',
-  'gemini_2.0_flash',
-  'openai_gpt_4o',
-  'openai_gpt_4o_mini',
-  'openai_o1_mini',
-  'anthropic_claude_3_5_sonnet'
-];
-export const supportedLLmsForGroundTruthMetrics = [
-  'groq_deepseek',
-  'gemini_1.5_pro',
-  'gemini_2.0_flash',
-  'openai_gpt_4o',
-  'openai_gpt_4o_mini',
-  'openai_o1_mini',
-  'anthropic_claude_3_5_sonnet'
-];
+// Models supported for RAGAS evaluation
+export const supportedLLmsForRagas = DEFAULT_LLMS;
+
+// Models supported for ground truth metrics
+export const supportedLLmsForGroundTruthMetrics = DEFAULT_LLMS;
 export const prodllms =
   process.env.VITE_LLM_MODELS_PROD?.trim() != ''
     ? (process.env.VITE_LLM_MODELS_PROD?.split(',') as string[])

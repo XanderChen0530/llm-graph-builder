@@ -34,13 +34,15 @@ class CustomBGEEmbeddings(Embeddings):
         api_key: str,
         base_url: str,
         model: str = "bge-m3",
-        batch_size: int = 512,
+        batch_size: Optional[int] = None,
     ):
         """Initialize the embeddings class."""
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
-        self.batch_size = batch_size
+        # Enforce maximum batch size of 25 for API limit
+        self.batch_size = min(batch_size or 25, 25)
+        logging.info(f"Initialized embeddings with batch size: {self.batch_size}")
         self.headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
@@ -106,20 +108,46 @@ class CustomBGEEmbeddings(Embeddings):
             raise
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Embed a list of documents."""
+        """Embed a list of documents.
+        
+        Args:
+            texts: List of texts to embed.
+            
+        Returns:
+            List of embeddings, one for each input text.
+            
+        Raises:
+            ValueError: If the input is invalid or empty.
+            Exception: If there's an error during the embedding process.
+        """
         if not texts:
             return []
+            
+        total_texts = len(texts)
+        logging.info(f"Embedding {total_texts} texts with batch size {self.batch_size}")
         
-        # Process in batches to avoid hitting API limits
+        # Process in batches to respect API limits
         embeddings = []
-        for i in range(0, len(texts), self.batch_size):
+        total_batches = (total_texts + self.batch_size - 1) // self.batch_size
+        
+        for i in range(0, total_texts, self.batch_size):
             batch = texts[i:i + self.batch_size]
+            batch_num = i // self.batch_size + 1
+            
             try:
+                logging.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} texts)")
                 batch_embeddings = self._call_api(batch)
                 embeddings.extend([data.get("embedding", []) for data in batch_embeddings])
+                logging.debug(f"Successfully embedded batch {batch_num}")
+                
             except Exception as e:
-                logging.error(f"Error embedding batch {i//self.batch_size + 1}: {str(e)}")
-                raise
+                error_msg = f"Error embedding batch {batch_num}/{total_batches}: {str(e)}"
+                if "超出批处理上限" in str(e):
+                    error_msg = f"Batch size exceeds API limit (max: 25). Current batch size: {len(batch)}. Please reduce NUMBER_OF_CHUNKS_TO_COMBINE in .env"
+                logging.error(error_msg)
+                raise Exception(error_msg) from e
+                
+        logging.info(f"Successfully embedded all {total_texts} texts in {total_batches} batches")
         return embeddings
 
     def embed_query(self, text: str) -> List[float]:
